@@ -11,26 +11,26 @@ import (
 func main() {
 	// Get server address
 	var serverAddr string
-	if len(os.Args) > 1 {
-		serverAddr = os.Args[1]
-	} else {
-		fmt.Print("Enter server address (default: localhost:8080): ")
-		reader := bufio.NewReader(os.Stdin)
-		input, _ := reader.ReadString('\n')
-		input = strings.TrimSpace(input)
 
-		if input == "" {
-			serverAddr = "localhost:8080"
-		} else if !strings.Contains(input, ":") {
-			serverAddr = "localhost:" + input
-		} else {
-			serverAddr = input
-		}
+	// Server address input handling
+	fmt.Print("Enter server address \n- default: localhost:8080 \n- address example: 192.168.1.1:8080 \nEnter Server Adderess:")
+	reader := bufio.NewReader(os.Stdin)
+	input, _ := reader.ReadString('\n')
+	input = strings.TrimSpace(input)
+
+	if input == "" {
+		serverAddr = "localhost:8080"
+	} else if !strings.Contains(input, ":") {
+		serverAddr = "localhost:" + input
+	} else if host, _, err := net.SplitHostPort(input); err == nil && net.ParseIP(host) != nil {
+		serverAddr = input
+	} else {
+		serverAddr = input
 	}
 
 	fmt.Printf("Connecting to %s...\n", serverAddr)
 
-	// Connect to server
+	// Connect  user to the server
 	conn, err := net.Dial("tcp", serverAddr)
 	if err != nil {
 		fmt.Printf("Cannot connect to server: %v\n", err)
@@ -41,13 +41,13 @@ func main() {
 
 	fmt.Println("Connected to server!")
 
-	// Create readers
+	// Create readers to handle user input
 	connReader := bufio.NewReader(conn)
 	localReader := bufio.NewReader(os.Stdin)
 
 	// Handle username setup
 	for {
-		// Read prompt from server
+		// Read message from server
 		prompt, err := connReader.ReadString('\n')
 		if err != nil {
 			fmt.Printf("Connection error: %v\n", err)
@@ -111,7 +111,8 @@ func main() {
 			fmt.Printf("Error reading input: %v\n", err)
 			break
 		}
-
+		
+		//delete whitespace leading and trailing
 		message = strings.TrimSpace(message)
 		if message == "" {
 			fmt.Print("You: ")

@@ -104,7 +104,7 @@ func (s *Server) handleClient(conn net.Conn) {
 			s.broadcastToRoom(client.room, client.username, message, client.conn)
 		}
 	}
-
+ 
 	// Client disconnected
 	s.removeClient(client)
 	s.broadcastToRoom(client.room, "SERVER", fmt.Sprintf("%s has left the chat", username), nil)
@@ -327,7 +327,8 @@ func (s *Server) showHelp(client *Client) {
   /leave        - Leave current room (return to general)
   /rooms        - List all active rooms
   /users        - List users in current room
-  /help         - Show this help message`
+  /help         - Show this help message
+  /quit         - Disconnect from the server`
 	s.sendToClient(client, "SERVER", help)
 }
 
