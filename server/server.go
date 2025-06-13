@@ -32,13 +32,13 @@ var (
 	mutex = &sync.Mutex{}
 )
 
-// listRooms mengembalikan string list room yang tersedia.
-// Fungsi ini sekarang lebih generik untuk command /rooms.
-func listRooms() string {
+// listRooms mengembalikan string list room yang tersedia untuk dipilih.
+func listRoomsForSelection() string {
 	result := "\nRoom yang tersedia:\n"
 	for _, room := range rooms {
 		result += fmt.Sprintf("- %s\n", room)
 	}
+	result += "Pilih room untuk bergabung:\n"
 	return result
 }
 
@@ -49,6 +49,18 @@ func broadcastMessage(message string, sender net.Conn, room string) {
 
 	for conn, client := range clients {
 		if conn != sender && client.room == room {
+			fmt.Fprint(conn, message)
+		}
+	}
+}
+
+// broadcastToAll mengirim pesan ke semua client di server, kecuali pengirim.
+func broadcastToAll(message string, sender net.Conn) {
+	mutex.Lock()
+	defer mutex.Unlock()
+
+	for conn := range clients {
+		if conn != sender {
 			fmt.Fprint(conn, message)
 		}
 	}
@@ -90,24 +102,54 @@ func handleClient(conn net.Conn) {
 		}
 	}
 
-	// Buat client baru dan secara otomatis tempatkan di room "general".
+	// Beri tahu semua client bahwa ada koneksi baru.
+	fmt.Printf("%s telah terhubung ke server.\n", name)
+	broadcastToAll(fmt.Sprintf("\n[SERVER] %s telah terhubung ke server.\n", name), conn)
+
+	// Buat client baru, room awalnya kosong.
 	client := &Client{
 		conn: conn,
 		name: name,
-		room: "general", // MODIFIKASI: Room default adalah "general".
+		room: "",
 	}
 
 	mutex.Lock()
 	clients[conn] = client
 	mutex.Unlock()
 
-	// Beri tahu room "general" bahwa ada user baru yang bergabung.
-	fmt.Printf("%s bergabung ke room 'general'\n", name)
-	broadcastMessage(fmt.Sprintf("\n%s baru saja bergabung.\n", name), conn, "general")
+	// Loop untuk meminta client memilih room.
+roomSelect:
+	for {
+		fmt.Fprint(conn, listRoomsForSelection()) // Kirim daftar room ke client
 
-	// Kirim pesan selamat datang ke client baru.
-	fmt.Fprintf(conn, "\nSelamat datang, %s! Anda telah ditempatkan di room 'general'.\n", name)
-	fmt.Fprintf(conn, "Ketik /rooms untuk melihat room lain, /join <room> untuk pindah, atau /leave untuk keluar dari room.\n\n")
+		roomChoice, err := reader.ReadString('\n')
+		if err != nil {
+			break // Keluar jika ada error
+		}
+		roomChoice = strings.TrimSpace(roomChoice)
+
+		// Validasi pilihan room
+		validRoom := false
+		for _, r := range rooms {
+			if strings.EqualFold(r, roomChoice) {
+				client.room = r
+				validRoom = true
+				break
+			}
+		}
+
+		if validRoom {
+			fmt.Fprintf(conn, "[SERVER] \nSelamat datang, %s! Anda berhasil bergabung ke room '%s'.\n", name, client.room)
+			fmt.Fprintf(conn, "Ketik /rooms untuk melihat room lain, \n/join <room> untuk pindah, \n/leave untuk keluar dari room.\n\n")
+
+			// Beri tahu room bahwa ada user baru yang bergabung.
+			broadcastMessage(fmt.Sprintf("[SERVER] %s baru saja bergabung dengan room ini.\n", name), conn, client.room)
+			fmt.Printf("[SERVER] %s bergabung ke room '%s'\n", name, client.room)
+			break roomSelect // Keluar dari loop pemilihan room
+		} else {
+			fmt.Fprintf(conn, "[SERVER] Nama room tidak valid, silakan coba lagi.\n")
+		}
+	}
 
 	// Loop utama untuk memproses pesan dari client.
 	for {
@@ -124,7 +166,7 @@ func handleClient(conn net.Conn) {
 			command := strings.Fields(message)
 			switch command[0] {
 			case "/rooms":
-				fmt.Fprintf(conn, listRooms())
+				fmt.Fprint(conn, listRoomsForSelection())
 			case "/join":
 				if len(command) > 1 {
 					roomToJoin := command[1]
@@ -139,30 +181,30 @@ func handleClient(conn net.Conn) {
 					if validRoom {
 						// Beri tahu room lama bahwa user telah keluar.
 						if client.room != "" {
-							broadcastMessage(fmt.Sprintf("%s telah meninggalkan room ini.\n", name), conn, client.room)
+							broadcastMessage(fmt.Sprintf("[SERVER] %s telah meninggalkan room ini.\n", name), conn, client.room)
 						}
 						// Perbarui room client dan beri tahu room baru.
 						client.room = roomToJoin
-						fmt.Fprintf(conn, "Berhasil bergabung ke '%s'.\n", client.room)
-						broadcastMessage(fmt.Sprintf("%s baru saja bergabung.\n", name), conn, client.room)
-						fmt.Printf("%s bergabung ke room %s\n", name, client.room)
+						fmt.Fprintf(conn, "[SERVER] Berhasil bergabung ke '%s'.\n", client.room)
+						broadcastMessage(fmt.Sprintf("[SERVER] %s baru saja bergabung.\n", name), conn, client.room)
+						fmt.Printf("[SERVER] %s bergabung ke room %s\n", name, client.room)
 					} else {
-						fmt.Fprintf(conn, "Nama room tidak valid. Ketik /rooms untuk melihat daftar.\n")
+						fmt.Fprintf(conn, "[SERVER] Nama room tidak valid. Ketik /rooms untuk melihat daftar.\n")
 					}
 				} else {
-					fmt.Fprintf(conn, "Penggunaan: /join <nama_room>\n")
+					fmt.Fprintf(conn, "[SERVER] Penggunaan: /join <nama_room>\n")
 				}
 			case "/leave":
 				if client.room != "" {
-					fmt.Fprintf(conn, "Anda meninggalkan '%s'.\n", client.room)
-					broadcastMessage(fmt.Sprintf("%s telah meninggalkan room ini.\n", name), conn, client.room)
-					fmt.Printf("%s meninggalkan room %s\n", name, client.room)
+					fmt.Fprintf(conn, "[SERVER] Anda meninggalkan '%s'.\n", client.room)
+					broadcastMessage(fmt.Sprintf("[SERVER] %s telah meninggalkan room ini.\n", name), conn, client.room)
+					fmt.Printf("[SERVER] %s meninggalkan room %s\n", name, client.room)
 					client.room = "" // Client sekarang berada di "lobby"
 				} else {
-					fmt.Fprintf(conn, "Anda tidak berada di dalam room manapun.\n")
+					fmt.Fprintf(conn, "[SERVER] Anda tidak berada di dalam room manapun.\n")
 				}
 			default:
-				fmt.Fprintf(conn, "Command tidak dikenal: %s\n", command[0])
+				fmt.Fprintf(conn, "[SERVER] Command tidak dikenal: %s\n", command[0])
 			}
 		} else {
 			// Menangani pesan chat biasa
@@ -170,7 +212,7 @@ func handleClient(conn net.Conn) {
 				if client.room != "" {
 					broadcastMessage(fmt.Sprintf("[%s] %s > %s\n", client.room, name, message), conn, client.room)
 				} else {
-					fmt.Fprintf(conn, "Anda tidak berada di dalam room. Gunakan /join <room> untuk memulai chat.\n")
+					fmt.Fprintf(conn, "[SERVER] Anda tidak berada di dalam room. Gunakan /join <room> untuk memulai chat.\n")
 				}
 			}
 		}
@@ -178,14 +220,15 @@ func handleClient(conn net.Conn) {
 
 	// Membersihkan saat client terputus.
 	mutex.Lock()
-	delete(clients, conn)
+	// Hanya hapus client jika masih ada di map
+	if _, ok := clients[conn]; ok {
+		delete(clients, conn)
+	}
 	mutex.Unlock()
 
-	// Beri tahu room jika client berada di dalamnya saat terputus.
-	if client.room != "" {
-		fmt.Printf("%s telah terputus.\n", name)
-		broadcastMessage(fmt.Sprintf("%s telah meninggalkan chat.\n", name), conn, client.room)
-	}
+	// Beri tahu semua orang di server bahwa client ini telah terputus.
+	fmt.Printf("[SERVER] %s telah terputus.\n", name)
+	broadcastToAll(fmt.Sprintf("\n[SERVER] %s telah terputus.\n", name), conn)
 }
 
 func main() {
