@@ -80,6 +80,93 @@ func isNameTaken(name string) bool {
 	return false
 }
 
+// handleCommand memproses semua command yang dikirim client
+func handleCommand(client *Client, conn net.Conn, message string) {
+	command := strings.Fields(message)
+	if len(command) == 0 {
+		return
+	}
+
+	switch command[0] {
+	case "/rooms":
+		handleRoomsCommand(conn)
+	case "/join":
+		handleJoinCommand(client, conn, command)
+	case "/leave":
+		handleLeaveCommand(client, conn)
+	case "/help":
+		handleHelpCommand(conn)
+	default:
+		fmt.Fprintf(conn, "[SERVER] Command tidak dikenal: %s. Ketik /help untuk bantuan.\n", command[0])
+	}
+}
+
+// handleRoomsCommand menampilkan daftar room yang tersedia
+func handleRoomsCommand(conn net.Conn) {
+	fmt.Fprint(conn, listRoomsForSelection())
+}
+
+// handleJoinCommand menangani perpindahan user ke room lain
+func handleJoinCommand(client *Client, conn net.Conn, command []string) {
+	if len(command) < 2 {
+		fmt.Fprintf(conn, "[SERVER] Penggunaan: /join <nama_room>\n")
+		return
+	}
+
+	roomToJoin := command[1]
+	
+	// Validasi nama room
+	validRoom := false
+	for _, r := range rooms {
+		if r == roomToJoin {
+			validRoom = true
+			break
+		}
+	}
+
+	if !validRoom {
+		fmt.Fprintf(conn, "[SERVER] Nama room tidak valid. Ketik /rooms untuk melihat daftar.\n")
+		return
+	}
+
+	// Beri tahu room lama bahwa user telah keluar
+	if client.room != "" {
+		broadcastMessage(fmt.Sprintf("[SERVER] %s telah meninggalkan room ini.\n", client.name), conn, client.room)
+	}
+
+	// Perbarui room client dan beri tahu room baru
+	client.room = roomToJoin
+	fmt.Fprintf(conn, "[SERVER] Berhasil bergabung ke '%s'.\n", client.room)
+	broadcastMessage(fmt.Sprintf("[SERVER] %s baru saja bergabung.\n", client.name), conn, client.room)
+	fmt.Printf("[SERVER] %s bergabung ke room %s\n", client.name, client.room)
+}
+
+// handleLeaveCommand menangani user keluar dari room
+func handleLeaveCommand(client *Client, conn net.Conn) {
+	if client.room == "" {
+		fmt.Fprintf(conn, "[SERVER] Anda tidak berada di dalam room manapun.\n")
+		return
+	}
+
+	fmt.Fprintf(conn, "[SERVER] Anda meninggalkan '%s'.\n", client.room)
+	broadcastMessage(fmt.Sprintf("[SERVER] %s telah meninggalkan room ini.\n", client.name), conn, client.room)
+	fmt.Printf("[SERVER] %s meninggalkan room %s\n", client.name, client.room)
+	client.room = "" // Client sekarang berada di "lobby"
+}
+
+// handleHelpCommand menampilkan bantuan command
+func handleHelpCommand(conn net.Conn) {
+	help := `
+[SERVER] Command yang tersedia:
+  /rooms - Melihat daftar room yang tersedia
+  /join <room> - Bergabung ke room tertentu
+  /leave - Keluar dari room saat ini
+  /help - Menampilkan bantuan ini
+  /quit - Keluar dari server (hanya di client)
+`
+	fmt.Fprintf(conn, "%s\n", help)
+}
+
 // handleClient mengatur seluruh siklus koneksi client.
 func handleClient(conn net.Conn) {
 	defer conn.Close()
@@ -95,11 +182,20 @@ func handleClient(conn net.Conn) {
 			return
 		}
 		name = strings.TrimSpace(nameInput)
+		
+		// Validasi username tidak kosong
+		if name == "" {
+			fmt.Fprintf(conn, "Username tidak boleh kosong, silakan masukkan username:\n")
+			continue
+		}
+		
 		if isNameTaken(name) {
 			fmt.Fprintf(conn, "Nama tidak tersedia, masukkan nama yang berbeda:\n")
-		} else {
-			break
+			continue
 		}
+		
+		// Username valid dan tidak diambil
+		break
 	}
 
 	// Beri tahu semua client bahwa ada koneksi baru.
@@ -140,7 +236,7 @@ roomSelect:
 
 		if validRoom {
 			fmt.Fprintf(conn, "[SERVER] \nSelamat datang, %s! Anda berhasil bergabung ke room '%s'.\n", name, client.room)
-			fmt.Fprintf(conn, "Ketik /rooms untuk melihat room lain, \n/join <room> untuk pindah, \n/leave untuk keluar dari room.\n\n")
+			fmt.Fprintf(conn, "Ketik /help untuk melihat daftar command yang tersedia.\n\n")
 
 			// Beri tahu room bahwa ada user baru yang bergabung.
 			broadcastMessage(fmt.Sprintf("[SERVER] %s baru saja bergabung dengan room ini.\n", name), conn, client.room)
@@ -163,49 +259,7 @@ roomSelect:
 
 		if strings.HasPrefix(message, "/") {
 			// Menangani command
-			command := strings.Fields(message)
-			switch command[0] {
-			case "/rooms":
-				fmt.Fprint(conn, listRoomsForSelection())
-			case "/join":
-				if len(command) > 1 {
-					roomToJoin := command[1]
-					validRoom := false
-					for _, r := range rooms {
-						if r == roomToJoin {
-							validRoom = true
-							break
-						}
-					}
-
-					if validRoom {
-						// Beri tahu room lama bahwa user telah keluar.
-						if client.room != "" {
-							broadcastMessage(fmt.Sprintf("[SERVER] %s telah meninggalkan room ini.\n", name), conn, client.room)
-						}
-						// Perbarui room client dan beri tahu room baru.
-						client.room = roomToJoin
-						fmt.Fprintf(conn, "[SERVER] Berhasil bergabung ke '%s'.\n", client.room)
-						broadcastMessage(fmt.Sprintf("[SERVER] %s baru saja bergabung.\n", name), conn, client.room)
-						fmt.Printf("[SERVER] %s bergabung ke room %s\n", name, client.room)
-					} else {
-						fmt.Fprintf(conn, "[SERVER] Nama room tidak valid. Ketik /rooms untuk melihat daftar.\n")
-					}
-				} else {
-					fmt.Fprintf(conn, "[SERVER] Penggunaan: /join <nama_room>\n")
-				}
-			case "/leave":
-				if client.room != "" {
-					fmt.Fprintf(conn, "[SERVER] Anda meninggalkan '%s'.\n", client.room)
-					broadcastMessage(fmt.Sprintf("[SERVER] %s telah meninggalkan room ini.\n", name), conn, client.room)
-					fmt.Printf("[SERVER] %s meninggalkan room %s\n", name, client.room)
-					client.room = "" // Client sekarang berada di "lobby"
-				} else {
-					fmt.Fprintf(conn, "[SERVER] Anda tidak berada di dalam room manapun.\n")
-				}
-			default:
-				fmt.Fprintf(conn, "[SERVER] Command tidak dikenal: %s\n", command[0])
-			}
+			handleCommand(client, conn, message)
 		} else {
 			// Menangani pesan chat biasa
 			if message != "" {
