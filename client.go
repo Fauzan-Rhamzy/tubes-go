@@ -67,7 +67,15 @@ func main() {
 				return
 			}
 
-			conn.Write([]byte(username))
+			// Trim the username but keep the newline for server protocol
+			trimmedUsername := strings.TrimSpace(username)
+			if trimmedUsername == "" {
+				// Send just a newline to trigger server's empty username handling
+				conn.Write([]byte("\n"))
+			} else {
+				// Send the original input (with newline) to server
+				conn.Write([]byte(username))
+			}
 
 		} else if strings.Contains(prompt, "Welcome to the chat") {
 			// Setup complete, break to main chat loop
