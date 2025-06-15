@@ -114,7 +114,7 @@ func handleJoinCommand(client *Client, conn net.Conn, command []string) {
 	}
 
 	roomToJoin := command[1]
-	
+
 	// Validasi nama room
 	validRoom := false
 	for _, r := range rooms {
@@ -182,18 +182,18 @@ func handleClient(conn net.Conn) {
 			return
 		}
 		name = strings.TrimSpace(nameInput)
-		
+
 		// Validasi username tidak kosong
 		if name == "" {
-			fmt.Fprintf(conn, "Username tidak boleh kosong, silakan masukkan username:\n")
+			fmt.Fprintf(conn, "Username tidak boleh kosong, silahkan masukkan username.\n")
 			continue
 		}
-		
+
 		if isNameTaken(name) {
-			fmt.Fprintf(conn, "Nama tidak tersedia, masukkan nama yang berbeda:\n")
+			fmt.Fprintf(conn, "Nama tidak tersedia, masukkan nama yang berbeda.\n")
 			continue
 		}
-		
+
 		// Username valid dan tidak diambil
 		break
 	}

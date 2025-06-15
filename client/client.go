@@ -46,33 +46,28 @@ func main() {
 		fmt.Print("Masukkan username: ")
 		nameInput, _ := localReader.ReadString('\n') // Input dari username dari client
 		name = strings.TrimSpace(nameInput)          // Simpan username milik client
-		
-		// Validasi username tidak kosong di client
-		if name == "" {
-			fmt.Println("Username tidak boleh kosong, silakan coba lagi.")
-			continue
-		}
-		
+
 		conn.Write([]byte(nameInput)) // Kirim username yang telah diketik ke server
-		
+
 		// Baca respons dari server
 		response, err := connReader.ReadString('\n')
 		if err != nil {
 			fmt.Printf("Error reading server response: %v\n", err)
 			return
 		}
-		
+
 		// Cek apakah username diterima atau ditolak
 		if strings.Contains(response, "tidak boleh kosong") || strings.Contains(response, "tidak tersedia") {
-			fmt.Print(response)
+			fmt.Print("\n", response)
 			continue
+		} else {
+			// Jika tidak ada masalah, tampilkan pesan dan keluar dari loop
+			fmt.Print(response)
+			break
 		}
-		
-		// Jika tidak ada masalah, tampilkan pesan dan keluar dari loop
-		fmt.Print(response)
-		break
+
 	}
-	
+
 	prompt := fmt.Sprintf("(%s) You > ", name) // Prompt untuk client contoh (username) You >
 
 	// Mulai go routine untuk menerima pesan dari server secara terus menerus
